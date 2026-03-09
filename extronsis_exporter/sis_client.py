@@ -42,8 +42,12 @@ _DATE_RE = re.compile(
 # Default SSH port for Extron SIS
 DEFAULT_SSH_PORT = 22023
 
-# How long to wait for the shell channel to produce data (seconds)
+# How long to wait for the *first* byte of a response (overall deadline, seconds)
 _RECV_TIMEOUT = 5.0
+# How long to wait for the *next* chunk after data has already arrived (idle gap, seconds).
+# The device sends a short one-line response and then goes silent; we use this short
+# timeout to detect end-of-response without waiting the full _RECV_TIMEOUT each time.
+_IDLE_TIMEOUT = 0.2
 _RECV_CHUNK = 4096
 
 
@@ -231,6 +235,11 @@ class ExtronSISClient:
         self._channel.send(payload)
 
         response = self._recv_until_quiet(max_wait=self.timeout)
+        # The device echoes the sent command back before the actual response.
+        # Strip the echo (everything up to and including the first \n) so callers
+        # only see the response value.
+        if "\n" in response:
+            response = response.split("\n", 1)[1]
         response = response.strip()
         logger.debug("← %r", response)
         return response
@@ -292,7 +301,7 @@ class ExtronSISClient:
 
         SIS command ``28STAT`` – response varies by device, e.g. ``Temp  C  25``.
         """
-        return self.send_command("28STAT")
+        return self.send_command("^[28STAT")
 
     def query_firmware(self) -> str:
         """
@@ -316,7 +325,12 @@ class ExtronSISClient:
 
     def _recv_until_quiet(self, max_wait: float = _RECV_TIMEOUT) -> str:
         """
-        Read from the channel until no more data arrives within *max_wait* seconds.
+        Read from the channel until no more data arrives.
+
+        Uses a two-phase strategy:
+        - Phase 1: wait up to *max_wait* seconds for the first byte (overall deadline).
+        - Phase 2: once data starts arriving, switch to a short *_IDLE_TIMEOUT* gap
+          to detect end-of-response quickly without waiting the full *max_wait*.
 
         Returns the accumulated data as a decoded string.
         """
@@ -324,16 +338,23 @@ class ExtronSISClient:
             return ""
         buf = b""
         deadline = time.monotonic() + max_wait
-        while time.monotonic() < deadline:
-            try:
-                chunk = self._channel.recv(_RECV_CHUNK)
-                if not chunk:
+        # Phase 1: wait for first byte with the full timeout
+        self._channel.settimeout(min(max_wait, _RECV_TIMEOUT))
+        try:
+            while time.monotonic() < deadline:
+                try:
+                    chunk = self._channel.recv(_RECV_CHUNK)
+                    if not chunk:
+                        break
+                    buf += chunk
+                    # Phase 2: switch to short idle timeout now that data is flowing
+                    self._channel.settimeout(_IDLE_TIMEOUT)
+                except socket.timeout:
+                    # No more data – device has finished its response
                     break
-                buf += chunk
-                time.sleep(0.01)  # yield; device sends data in bursts
-            except socket.timeout:
-                # No more data – device is waiting for a command
-                break
+        finally:
+            # Always restore the standard recv timeout
+            self._channel.settimeout(_RECV_TIMEOUT)
         return buf.decode("utf-8", errors="replace")
 
     def _flush(self) -> None:
