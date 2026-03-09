@@ -1,0 +1,15 @@
+services:
+  extronsis-exporter:
+    build: .
+    image: extronsis-exporter:latest
+    container_name: extronsis-exporter
+    restart: unless-stopped
+    ports:
+      - "9877:9877"
+    volumes:
+      # Mount your config.yaml into the container
+      - ./config.yaml:/etc/extronsis-exporter/config.yaml:ro
+    environment:
+      EXTRONSIS_CONFIG: /etc/extronsis-exporter/config.yaml
+    # Optional: override log level at runtime
+    # command: ["--log-level", "DEBUG"]

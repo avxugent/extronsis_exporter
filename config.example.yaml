@@ -1,0 +1,41 @@
+# extronsis-exporter example configuration
+# Copy this file to config.yaml and adjust to your environment.
+
+# ── HTTP server ───────────────────────────────────────────────────────────────
+
+# Address the HTTP server listens on.
+listen_host: "0.0.0.0"
+
+# Port the HTTP server listens on.
+listen_port: 9877
+
+# Path where Prometheus metrics are exposed.
+metrics_path: /metrics
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+
+# Minimum log level: DEBUG | INFO | WARNING | ERROR | CRITICAL
+log_level: INFO
+
+# ── Devices ───────────────────────────────────────────────────────────────────
+
+# List of Extron devices to monitor.
+# Each device is scraped on every Prometheus scrape request.
+devices:
+  - name: in1804-room-101          # Unique label used in all Prometheus metrics
+    host: 192.168.1.10             # Hostname or IP address of the device
+    port: 22023                    # SSH port (Extron SIS default: 22023)
+    username: admin                # SSH username (default: admin)
+    password: ""                   # SSH password (leave empty if none)
+    timeout: 10.0                  # Per-command timeout in seconds
+    num_inputs: 8                  # Number of inputs on the device (IN1804 = 8)
+    num_outputs: 1                 # Number of outputs on the device (IN1804 = 1)
+
+  - name: in1804-room-102
+    host: 192.168.1.11
+    port: 22023
+    username: admin
+    password: "secret"
+    timeout: 10.0
+    num_inputs: 8
+    num_outputs: 1
