@@ -20,7 +20,26 @@ log_level: INFO
 # ── Devices ───────────────────────────────────────────────────────────────────
 
 # List of Extron devices to monitor.
-# Each device is scraped on every Prometheus scrape request.
+#
+# This list is OPTIONAL. When left empty (or omitted entirely) the exporter
+# operates in URL-parameter mode only: every scrape request must supply the
+# target device via query parameters, e.g.:
+#
+#   GET /metrics?host=192.168.1.10&name=room-101
+#
+# When devices ARE listed here they are scraped on every plain GET /metrics
+# request (config-file mode). URL-parameter mode is always available alongside
+# config-file mode regardless of whether devices are listed below.
+#
+# Supported query parameters (all except 'host' are optional):
+#   host        Hostname or IP address of the device  (required)
+#   name        Label used in Prometheus metrics       (default: value of host)
+#   port        SSH port                               (default: 22023)
+#   username    SSH username                           (default: admin)
+#   password    SSH password                           (default: empty)
+#   timeout     Per-command timeout in seconds         (default: 10.0)
+#   num_inputs  Number of inputs to query              (default: 8)
+#   num_outputs Number of outputs to query             (default: 1)
 devices:
   - name: in1804-room-101          # Unique label used in all Prometheus metrics
     host: 192.168.1.10             # Hostname or IP address of the device

@@ -18,7 +18,7 @@ from prometheus_client.core import (
     Metric,
 )
 
-from .sis_client import DeviceBanner, DeviceMetrics, ExtronSISClient
+from .sis_client import DeviceBanner, DeviceMetrics, ExtronSISClient, InputInfo
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,39 @@ def _parse_temperature(raw: str) -> Optional[float]:
     return float(m.group(1)) if m else None
 
 
+# Regex to parse the input info response:
+# "Vid1 Typ0 Amt1 Vmt0 Hrt000.00 Vrt000.00"
+_INPUT_INFO_RE = re.compile(
+    r"Vid(?P<vid>\d+)\s+"
+    r"Typ(?P<typ>\d+)\s+"
+    r"Amt(?P<amt>\d+)\s+"
+    r"Vmt(?P<vmt>\d+)\s+"
+    r"Hrt(?P<hrt>[\d.]+)\s+"
+    r"Vrt(?P<vrt>[\d.]+)",
+    re.IGNORECASE,
+)
+
+
+def _parse_input_info(raw: str) -> Optional[InputInfo]:
+    """
+    Parse the response from the ``<n>*I`` SIS command.
+
+    Expected format: ``Vid1 Typ0 Amt1 Vmt0 Hrt000.00 Vrt000.00``
+    Returns an :class:`InputInfo` on success, or ``None`` if parsing fails.
+    """
+    m = _INPUT_INFO_RE.search(raw)
+    if not m:
+        return None
+    return InputInfo(
+        selected_input=int(m.group("vid")),
+        video_type=int(m.group("typ")),
+        audio_muted=int(m.group("amt")) == 1,
+        video_muted=int(m.group("vmt")),
+        horizontal_freq=float(m.group("hrt")),
+        vertical_freq=float(m.group("vrt")),
+    )
+
+
 def _parse_routing(raw: str) -> Optional[int]:
     """
     Parse the input number from a routing query response.
@@ -115,10 +148,15 @@ class ExtronCollector:
         yield GaugeMetricFamily("extron_scrape_duration_seconds", "")
         yield InfoMetricFamily("extron_device", "")
         yield GaugeMetricFamily("extron_output_current_input", "")
-        yield GaugeMetricFamily("extron_input_signal_locked", "")
+        yield GaugeMetricFamily("extron_input_video_type", "")
+        yield GaugeMetricFamily("extron_input_audio_muted", "")
+        yield GaugeMetricFamily("extron_input_video_muted", "")
+        yield GaugeMetricFamily("extron_input_horizontal_freq_khz", "")
+        yield GaugeMetricFamily("extron_input_vertical_freq_hz", "")
         yield GaugeMetricFamily("extron_output_audio_muted", "")
         yield GaugeMetricFamily("extron_output_video_muted", "")
         yield GaugeMetricFamily("extron_temperature_celsius", "")
+        yield GaugeMetricFamily("extron_power_mode", "")
 
     def collect(self) -> Generator[Metric, None, None]:
         """Scrape all devices and yield Prometheus metric families."""
@@ -188,19 +226,75 @@ class ExtronCollector:
                 )
         yield input_family
 
-        # --- extron_input_signal_locked ---
-        sig_family = GaugeMetricFamily(
-            "extron_input_signal_locked",
-            "1 if the input has a locked (active) signal, 0 otherwise.",
+        # --- extron_input_video_type ---
+        vid_type_family = GaugeMetricFamily(
+            "extron_input_video_type",
+            "Video signal type on the input: 0=No signal, 1=DVI, 2=HDMI, 3=DisplayPort.",
             labels=["device", "host", "input"],
         )
         for dev_cfg, m in all_metrics:
-            for input_num, locked in m.input_signal_locked.items():
-                sig_family.add_metric(
+            for input_num, info in m.input_info.items():
+                vid_type_family.add_metric(
                     [dev_cfg["name"], dev_cfg["host"], str(input_num)],
-                    1.0 if locked else 0.0,
+                    float(info.video_type),
                 )
-        yield sig_family
+        yield vid_type_family
+
+        # --- extron_input_audio_muted ---
+        inp_audio_family = GaugeMetricFamily(
+            "extron_input_audio_muted",
+            "1 if the input audio is muted, 0 otherwise.",
+            labels=["device", "host", "input"],
+        )
+        for dev_cfg, m in all_metrics:
+            for input_num, info in m.input_info.items():
+                inp_audio_family.add_metric(
+                    [dev_cfg["name"], dev_cfg["host"], str(input_num)],
+                    1.0 if info.audio_muted else 0.0,
+                )
+        yield inp_audio_family
+
+        # --- extron_input_video_muted ---
+        inp_video_family = GaugeMetricFamily(
+            "extron_input_video_muted",
+            "Video mute state on the input: 0=Unmuted, 1=Mute to black, 2=Mute video and sync.",
+            labels=["device", "host", "input"],
+        )
+        for dev_cfg, m in all_metrics:
+            for input_num, info in m.input_info.items():
+                inp_video_family.add_metric(
+                    [dev_cfg["name"], dev_cfg["host"], str(input_num)],
+                    float(info.video_muted),
+                )
+        yield inp_video_family
+
+        # --- extron_input_horizontal_freq_khz ---
+        hfreq_family = GaugeMetricFamily(
+            "extron_input_horizontal_freq_khz",
+            "Horizontal frequency of the input signal in kHz.",
+            labels=["device", "host", "input"],
+        )
+        for dev_cfg, m in all_metrics:
+            for input_num, info in m.input_info.items():
+                hfreq_family.add_metric(
+                    [dev_cfg["name"], dev_cfg["host"], str(input_num)],
+                    info.horizontal_freq,
+                )
+        yield hfreq_family
+
+        # --- extron_input_vertical_freq_hz ---
+        vfreq_family = GaugeMetricFamily(
+            "extron_input_vertical_freq_hz",
+            "Vertical frequency of the input signal in Hz.",
+            labels=["device", "host", "input"],
+        )
+        for dev_cfg, m in all_metrics:
+            for input_num, info in m.input_info.items():
+                vfreq_family.add_metric(
+                    [dev_cfg["name"], dev_cfg["host"], str(input_num)],
+                    info.vertical_freq,
+                )
+        yield vfreq_family
 
         # --- extron_output_audio_muted ---
         audio_family = GaugeMetricFamily(
@@ -243,6 +337,24 @@ class ExtronCollector:
                     m.temperature_celsius,
                 )
         yield temp_family
+
+        # --- extron_power_mode ---
+        power_family = GaugeMetricFamily(
+            "extron_power_mode",
+            (
+                "Current power save mode of the device (WPSAV). "
+                "0=Full power, 1=Lowest power (TP disabled), "
+                "2=Lower power (TP links active), 9=Over-heating."
+            ),
+            labels=["device", "host"],
+        )
+        for dev_cfg, m in all_metrics:
+            if m.power_mode is not None:
+                power_family.add_metric(
+                    [dev_cfg["name"], dev_cfg["host"]],
+                    float(m.power_mode),
+                )
+        yield power_family
 
     # ------------------------------------------------------------------
     # Device scraping
@@ -287,21 +399,21 @@ class ExtronCollector:
                         dev_cfg["name"], out, exc,
                     )
 
-            # --- Input signal lock status ---
+            # --- Per-input general information ---
             for inp in range(1, num_inputs + 1):
                 try:
-                    raw = client.query_input_signal(inp)
-                    locked = _parse_bool_response(raw)
-                    if locked is not None:
-                        metrics.input_signal_locked[inp] = locked
+                    raw = client.query_input_info(inp)
+                    info = _parse_input_info(raw)
+                    if info is not None:
+                        metrics.input_info[inp] = info
                     else:
                         logger.warning(
-                            "Could not parse signal lock for %s input %d: %r",
+                            "Could not parse input info for %s input %d: %r",
                             dev_cfg["name"], inp, raw,
                         )
                 except Exception as exc:
                     logger.warning(
-                        "Failed to query signal lock for %s input %d: %s",
+                        "Failed to query input info for %s input %d: %s",
                         dev_cfg["name"], inp, exc,
                     )
 
@@ -357,6 +469,23 @@ class ExtronCollector:
             except Exception as exc:
                 logger.debug(
                     "Failed to query temperature for %s: %s",
+                    dev_cfg["name"], exc,
+                )
+
+            # --- Power mode ---
+            try:
+                raw = client.query_power_mode()
+                mode = _parse_int_response(raw)
+                if mode is not None:
+                    metrics.power_mode = mode
+                else:
+                    logger.warning(
+                        "Could not parse power mode for %s: %r",
+                        dev_cfg["name"], raw,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to query power mode for %s: %s",
                     dev_cfg["name"], exc,
                 )
 

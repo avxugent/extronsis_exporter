@@ -64,6 +64,37 @@ class DeviceBanner:
 
 
 @dataclass
+class InputInfo:
+    """
+    Parsed response from the ``<n>*I`` SIS command.
+
+    Example response: ``Vid1 Typ0 Amt1 Vmt0 Hrt000.00 Vrt000.00``
+
+    Fields
+    ------
+    selected_input : int
+        The selected input number (Vid field).
+    video_type : int
+        Video signal type: 0 = No signal, 1 = DVI, 2 = HDMI, 3 = DisplayPort.
+    audio_muted : bool
+        True if audio is muted (Amt field, 1 = muted).
+    video_muted : int
+        Video mute state: 0 = Unmuted, 1 = Mute to black, 2 = Mute video and sync.
+    horizontal_freq : float
+        Horizontal frequency in kHz (Hrt field).
+    vertical_freq : float
+        Vertical frequency in Hz (Vrt field).
+    """
+
+    selected_input: int = 0
+    video_type: int = 0
+    audio_muted: bool = False
+    video_muted: int = 0
+    horizontal_freq: float = 0.0
+    vertical_freq: float = 0.0
+
+
+@dataclass
 class DeviceMetrics:
     """All metrics collected from a single Extron device."""
 
@@ -72,8 +103,8 @@ class DeviceMetrics:
     # Current input selected per output (output_number -> input_number, 0 = no signal)
     current_inputs: dict[int, int] = field(default_factory=dict)
 
-    # Input signal lock status (input_number -> True/False)
-    input_signal_locked: dict[int, bool] = field(default_factory=dict)
+    # Per-input general information from the <n>*I command (input_number -> InputInfo)
+    input_info: dict[int, InputInfo] = field(default_factory=dict)
 
     # Output audio mute status (output_number -> True/False)
     output_audio_muted: dict[int, bool] = field(default_factory=dict)
@@ -83,6 +114,10 @@ class DeviceMetrics:
 
     # Internal temperature in Celsius (None if not available)
     temperature_celsius: Optional[float] = None
+
+    # Power mode from WPSAV command:
+    # 0 = Full power (default), 1 = Lowest power, 2 = Lower power, 9 = Over-heating
+    power_mode: Optional[int] = None
 
     # Whether the scrape succeeded
     up: bool = False
@@ -270,13 +305,23 @@ class ExtronSISClient:
         """
         return self.send_command("!")
 
-    def query_input_signal(self, input_num: int) -> str:
+    def query_input_info(self, input_num: int) -> str:
         """
-        Query the signal lock status for input *input_num*.
+        Query general information for input *input_num*.
 
-        SIS command ``<n>*\\`` – response is typically ``1`` (locked) or ``0``.
+        SIS command ``<n>*I`` – response format::
+
+            Vid1 Typ0 Amt1 Vmt0 Hrt000.00 Vrt000.00
+
+        where:
+          - ``Vid`` = selected input number
+          - ``Typ`` = video type (0=No signal, 1=DVI, 2=HDMI, 3=DisplayPort)
+          - ``Amt`` = audio mute status (0=unmuted, 1=muted)
+          - ``Vmt`` = video mute status (0=unmuted, 1=black, 2=video+sync)
+          - ``Hrt`` = horizontal frequency (kHz)
+          - ``Vrt`` = vertical frequency (Hz)
         """
-        return self.send_command(f"{input_num}*\\")
+        return self.send_command(f"{input_num}*I")
 
     def query_audio_mute(self) -> str:
         """
@@ -301,7 +346,22 @@ class ExtronSISClient:
 
         SIS command ``28STAT`` – response varies by device, e.g. ``Temp  C  25``.
         """
-        return self.send_command("^[28STAT")
+        return self.send_command("W28STAT")
+
+    def query_power_mode(self) -> str:
+        """
+        Query the current power save mode.
+
+        SIS command ``WPSAV`` – response is a single digit:
+
+        - ``0`` = Full power mode (default)
+        - ``1`` = Lowest power state — TP remote power and TP links disabled;
+          input LEDs 1–4 cycle at 500 ms interval.
+        - ``2`` = Lower power mode — TP links remain active including remote power
+          and Ethernet to RS-232 insertion; input LEDs 1–4 cycle at 500 ms interval.
+        - ``9`` = Low power state due to over-heating (query-response only).
+        """
+        return self.send_command("WPSAV")
 
     def query_firmware(self) -> str:
         """
