@@ -1,7 +1,6 @@
 services:
   extronsis-exporter:
-    build: .
-    image: extronsis-exporter:latest
+    image: kristofkeppens/extronsis-exporter:latest
     container_name: extronsis-exporter
     restart: unless-stopped
     ports:

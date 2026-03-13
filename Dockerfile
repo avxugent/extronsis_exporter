@@ -14,7 +14,7 @@ FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="extronsis-exporter" \
       org.opencontainers.image.description="Prometheus exporter for Extron SIS devices" \
-      org.opencontainers.image.source="https://github.com/ugent-library/extronsis-exporter"
+      org.opencontainers.image.source="https://github.com/kristofkeppens/extronsis-exporter"
 
 WORKDIR /app
 
