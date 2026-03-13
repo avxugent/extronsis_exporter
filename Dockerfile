@@ -24,8 +24,12 @@ COPY --from=builder /install /usr/local
 # Copy the application source
 COPY extronsis_exporter/ ./extronsis_exporter/
 
-# The configuration file is expected to be mounted at runtime.
-# Default path: /etc/extronsis-exporter/config.yaml
+# Bundle the example config as the built-in default.
+# A custom config can be injected at runtime by mounting a file over this path
+# or by setting EXTRONSIS_CONFIG to point elsewhere.
+RUN mkdir -p /etc/extronsis-exporter
+COPY config.example.yaml /etc/extronsis-exporter/config.yaml
+
 ENV EXTRONSIS_CONFIG=/etc/extronsis-exporter/config.yaml
 
 EXPOSE 9877

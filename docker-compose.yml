@@ -6,9 +6,8 @@ services:
     ports:
       - "9877:9877"
     volumes:
-      # Mount your config.yaml into the container
+      # Optional: mount a custom config to override the built-in default.
+      # Remove or comment out this line to use the image's default config.
       - ./config.yaml:/etc/extronsis-exporter/config.yaml:ro
-    environment:
-      EXTRONSIS_CONFIG: /etc/extronsis-exporter/config.yaml
     # Optional: override log level at runtime
     # command: ["--log-level", "DEBUG"]
