@@ -165,18 +165,86 @@ docker run -d \
 
 ---
 
-## Scraping Modes
+## Endpoints
 
-The exporter supports two modes, which can be used independently or together.
+| Path | Description |
+|------|-------------|
+| `GET /probe` | Probe Extron SIS device(s) and return their metrics |
+| `GET /metrics` | Exporter self-metrics (process info, request counters, probe duration histogram) |
+| `GET /healthz` | Liveness check — always returns `200 OK` |
+
+## Probing Modes
+
+The `/probe` endpoint supports two modes, which can be used independently or together.
 
 ### Config-file mode
 
-Devices are listed in `config.yaml`. A plain `GET /metrics` scrapes all of them.
+Devices are listed in `config.yaml`. A plain `GET /probe` scrapes all of them.
 
 ```yaml
 devices:
   - name: in1804-room-101
     host: 192.168.1.10
+```
+
+Prometheus scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: extron_probe
+    metrics_path: /probe
+    static_configs:
+      - targets: ["localhost:9877"]
+
+  - job_name: extron_exporter
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["localhost:9877"]
+```
+
+### URL-parameter mode
+
+The target device is specified entirely via query parameters on each scrape
+request. No config-file entry is required for the target device. This is the
+recommended approach when managing many devices through Prometheus relabeling.
+
+```
+GET /probe?host=192.168.1.10&name=room-101&num_inputs=4
+```
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `host` | **yes** | — | Hostname or IP address of the device |
+| `name` | no | value of `host` | Label used in all Prometheus metrics |
+| `port` | no | `22023` | SSH port |
+| `username` | no | `admin` | SSH username |
+| `password` | no | _(empty)_ | SSH password |
+| `timeout` | no | `10.0` | Per-command timeout in seconds |
+| `num_inputs` | no | `8` | Number of inputs to query |
+| `num_outputs` | no | `1` | Number of outputs to query |
+
+Prometheus scrape config using `params` and relabeling:
+
+```yaml
+scrape_configs:
+  - job_name: extron_probe
+    metrics_path: /probe
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_host
+      - source_labels: [__param_host]
+        target_label: instance
+      - target_label: __address__
+        replacement: localhost:9877   # address of the exporter
+    static_configs:
+      - targets:
+          - 192.168.1.10   # Extron device 1
+          - 192.168.1.11   # Extron device 2
+
+  - job_name: extron_exporter
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["localhost:9877"]
 ```
 
 Prometheus scrape config:
@@ -236,7 +304,6 @@ scrape_configs:
 # HTTP server
 listen_host: "0.0.0.0"   # Interface to listen on
 listen_port: 9877          # Port to listen on
-metrics_path: /metrics     # Prometheus scrape path
 
 # Logging
 log_level: INFO            # DEBUG | INFO | WARNING | ERROR | CRITICAL

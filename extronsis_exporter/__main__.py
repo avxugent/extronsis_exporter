@@ -9,27 +9,38 @@ Or via the installed console script::
 
     extronsis-exporter [-c config.yaml]
 
-The ``/metrics`` endpoint supports two modes:
+Endpoints
+---------
 
-**Config-file mode** — scrapes all devices defined in the configuration file:
+``GET /metrics``
+    Application self-metrics (process info, Python runtime, request counters).
+    Intended for Prometheus to scrape the exporter process itself.
 
-    GET /metrics
+``GET /probe``
+    Probe one or more Extron SIS devices and return their metrics.
 
-**URL-parameter mode** — scrapes a single device specified entirely via query
-parameters; no configuration file entry is required for the target device:
+    **Config-file mode** — scrapes all devices listed in the configuration file:
 
-    GET /metrics?host=192.168.1.10&name=room-101&num_inputs=4
+        GET /probe
 
-Available query parameters:
+    **URL-parameter mode** — scrapes a single device specified via query
+    parameters; no config-file entry is required for that device:
 
-    host        (required) Hostname or IP address of the device.
-    name        Label used in Prometheus metrics. Defaults to the value of host.
-    port        SSH port. Default: 22023.
-    username    SSH username. Default: admin.
-    password    SSH password. Default: empty string.
-    timeout     Per-command timeout in seconds. Default: 10.0.
-    num_inputs  Number of inputs to query. Default: 8.
-    num_outputs Number of outputs to query. Default: 1.
+        GET /probe?host=192.168.1.10&name=room-101&num_inputs=4
+
+    Available query parameters:
+
+        host        (required) Hostname or IP address of the device.
+        name        Label used in Prometheus metrics. Defaults to the value of host.
+        port        SSH port. Default: 22023.
+        username    SSH username. Default: admin.
+        password    SSH password. Default: empty string.
+        timeout     Per-command timeout in seconds. Default: 10.0.
+        num_inputs  Number of inputs to query. Default: 8.
+        num_outputs Number of outputs to query. Default: 1.
+
+``GET /healthz``
+    Liveness check; always returns ``200 OK``.
 """
 
 from __future__ import annotations
@@ -39,16 +50,39 @@ import logging
 import os
 import signal
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import yaml
-from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Histogram,
+    generate_latest,
+    REGISTRY,
+)
 
 from .collector import ExtronCollector
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Application-level metrics (self-monitoring)
+# ---------------------------------------------------------------------------
+
+_PROBE_REQUESTS_TOTAL = Counter(
+    "extronsis_probe_requests_total",
+    "Total number of /probe requests received.",
+    ["result"],  # labels: "success" | "error"
+)
+
+_PROBE_DURATION_SECONDS = Histogram(
+    "extronsis_probe_duration_seconds",
+    "End-to-end duration of a /probe request in seconds.",
+)
 
 # ---------------------------------------------------------------------------
 # Configuration loading
@@ -57,7 +91,6 @@ logger = logging.getLogger(__name__)
 _DEFAULT_CONFIG: dict[str, Any] = {
     "listen_host": "0.0.0.0",
     "listen_port": 9877,
-    "metrics_path": "/metrics",
     "log_level": "INFO",
     "devices": [],
 }
@@ -124,13 +157,15 @@ def _device_from_query_params(query_params: dict[str, list[str]]) -> dict[str, A
 def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
     """Return a :class:`BaseHTTPRequestHandler` subclass closed over *cfg*."""
 
-    class MetricsHandler(BaseHTTPRequestHandler):
+    class Handler(BaseHTTPRequestHandler):
 
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
 
-            if parsed.path == cfg["metrics_path"]:
-                self._handle_metrics(parse_qs(parsed.query))
+            if parsed.path == "/probe":
+                self._handle_probe(parse_qs(parsed.query))
+            elif parsed.path == "/metrics":
+                self._handle_metrics()
             elif parsed.path == "/healthz":
                 self._handle_healthz()
             else:
@@ -139,21 +174,26 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
                 self.end_headers()
                 self.wfile.write(b"Not Found")
 
-        def _handle_metrics(self, query_params: dict[str, list[str]]) -> None:
+        def _handle_probe(self, query_params: dict[str, list[str]]) -> None:
+            """Probe one or more Extron SIS devices and return their metrics."""
+            start = time.monotonic()
+
             # URL-parameter mode: at least `host` must be present.
             if "host" in query_params:
                 try:
                     devices = [_device_from_query_params(query_params)]
                 except ValueError as exc:
+                    _PROBE_REQUESTS_TOTAL.labels(result="error").inc()
                     self.send_error(400, f"Invalid query parameter: {exc}")
                     return
                 logger.debug(
-                    "Scraping device from URL parameters: %s (%s:%d)",
+                    "Probing device from URL parameters: %s (%s:%d)",
                     devices[0]["name"], devices[0]["host"], devices[0]["port"],
                 )
             else:
                 # Config-file mode: use the static device list from the config.
                 if not cfg["devices"]:
+                    _PROBE_REQUESTS_TOTAL.labels(result="error").inc()
                     self.send_error(
                         400,
                         "No devices configured. Either add devices to the config file "
@@ -161,7 +201,7 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
                     )
                     return
                 devices = cfg["devices"]
-                logger.debug("Scraping %d device(s) from config", len(devices))
+                logger.debug("Probing %d device(s) from config", len(devices))
 
             registry = CollectorRegistry(auto_describe=True)
             registry.register(ExtronCollector(devices))
@@ -169,10 +209,23 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
             try:
                 output = generate_latest(registry)
             except Exception as exc:
-                logger.error("Failed to generate metrics: %s", exc)
+                logger.error("Failed to generate probe metrics: %s", exc)
+                _PROBE_REQUESTS_TOTAL.labels(result="error").inc()
                 self.send_error(500, "Internal server error")
                 return
 
+            _PROBE_DURATION_SECONDS.observe(time.monotonic() - start)
+            _PROBE_REQUESTS_TOTAL.labels(result="success").inc()
+
+            self.send_response(200)
+            self.send_header("Content-Type", CONTENT_TYPE_LATEST)
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(output)
+
+        def _handle_metrics(self) -> None:
+            """Serve the exporter's own application metrics from the default registry."""
+            output = generate_latest(REGISTRY)
             self.send_response(200)
             self.send_header("Content-Type", CONTENT_TYPE_LATEST)
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -192,7 +245,7 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
                 fmt % args,
             )
 
-    return MetricsHandler
+    return Handler
 
 
 # ---------------------------------------------------------------------------
@@ -290,22 +343,20 @@ def main(argv: list[str] | None = None) -> None:
             cfg["listen_host"], cfg["listen_port"],
         )
 
+    logger.info(
+        "Listening on http://%s:%d  probe=>/probe  self-metrics=>/metrics",
+        cfg["listen_host"], cfg["listen_port"],
+    )
+
     # --- HTTP server ---
     httpd = ThreadingHTTPServer(
         (cfg["listen_host"], cfg["listen_port"]),
         _make_handler(cfg),
     )
-    logger.info(
-        "Listening on http://%s:%d%s",
-        cfg["listen_host"],
-        cfg["listen_port"],
-        cfg["metrics_path"],
-    )
 
     # --- Graceful shutdown ---
     def _handle_signal(signum: int, _frame: Any) -> None:
         logger.info("Received signal %d, shutting down…", signum)
-        # httpd.shutdown() is safe to call from a signal handler thread
         httpd.shutdown()
 
     signal.signal(signal.SIGINT, _handle_signal)

@@ -9,9 +9,6 @@ listen_host: "0.0.0.0"
 # Port the HTTP server listens on.
 listen_port: 9877
 
-# Path where Prometheus metrics are exposed.
-metrics_path: /metrics
-
 # ── Logging ───────────────────────────────────────────────────────────────────
 
 # Minimum log level: DEBUG | INFO | WARNING | ERROR | CRITICAL
@@ -22,12 +19,12 @@ log_level: INFO
 # List of Extron devices to monitor.
 #
 # This list is OPTIONAL. When left empty (or omitted entirely) the exporter
-# operates in URL-parameter mode only: every scrape request must supply the
+# operates in URL-parameter mode only: every probe request must supply the
 # target device via query parameters, e.g.:
 #
-#   GET /metrics?host=192.168.1.10&name=room-101
+#   GET /probe?host=192.168.1.10&name=room-101
 #
-# When devices ARE listed here they are scraped on every plain GET /metrics
+# When devices ARE listed here they are probed on every plain GET /probe
 # request (config-file mode). URL-parameter mode is always available alongside
 # config-file mode regardless of whether devices are listed below.
 #
