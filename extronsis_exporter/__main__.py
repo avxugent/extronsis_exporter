@@ -162,7 +162,9 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
 
-            if parsed.path == "/probe":
+            if parsed.path == "/":
+                self._handle_index()
+            elif parsed.path == "/probe":
                 self._handle_probe(parse_qs(parsed.query))
             elif parsed.path == "/metrics":
                 self._handle_metrics()
@@ -173,6 +175,87 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
                 self.send_header("Content-Type", "text/plain")
                 self.end_headers()
                 self.wfile.write(b"Not Found")
+
+        def _handle_index(self) -> None:
+            """Render a minimal HTML landing page with application info."""
+            num_devices = len(cfg["devices"])
+            device_rows = "".join(
+                f"<tr><td>{dev['name']}</td><td>{dev['host']}</td>"
+                f"<td>{dev['port']}</td><td>{dev['num_inputs']}</td>"
+                f"<td>{dev['num_outputs']}</td></tr>"
+                for dev in cfg["devices"]
+            )
+            device_section = (
+                f"""
+                <h2>Pre-configured devices ({num_devices})</h2>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th><th>Host</th><th>Port</th>
+                      <th>Inputs</th><th>Outputs</th>
+                    </tr>
+                  </thead>
+                  <tbody>{device_rows}</tbody>
+                </table>"""
+                if num_devices
+                else """
+                <h2>Pre-configured devices</h2>
+                <p>No devices configured. Supply a <code>host</code> query
+                parameter to <a href="/probe">/probe</a> to target a device
+                at scrape time.</p>"""
+            )
+
+            body = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>extronsis-exporter</title>
+  <style>
+    body {{ font-family: sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #222; }}
+    h1 {{ font-size: 1.4rem; margin-bottom: 0.25rem; }}
+    h2 {{ font-size: 1rem; margin-top: 2rem; margin-bottom: 0.5rem; color: #555; text-transform: uppercase; letter-spacing: .05em; }}
+    p  {{ margin: 0.4rem 0; }}
+    a  {{ color: #0066cc; }}
+    table {{ border-collapse: collapse; width: 100%; font-size: 0.9rem; }}
+    th, td {{ text-align: left; padding: 0.35rem 0.6rem; border: 1px solid #ddd; }}
+    th {{ background: #f5f5f5; }}
+    .endpoints td:first-child {{ font-family: monospace; white-space: nowrap; }}
+    code {{ background: #f0f0f0; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em; }}
+  </style>
+</head>
+<body>
+  <h1>extronsis-exporter</h1>
+  <p>Prometheus exporter for <a href="https://www.extron.com/" target="_blank">Extron</a>
+     SIS devices over SSH.</p>
+
+  <h2>Endpoints</h2>
+  <table class="endpoints">
+    <thead><tr><th>Path</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><a href="/probe">/probe</a></td>
+          <td>Probe Extron SIS device(s) and return their metrics.
+              Accepts optional <code>host</code>, <code>name</code>,
+              <code>port</code>, <code>num_inputs</code>, <code>num_outputs</code>,
+              <code>username</code>, <code>password</code>, <code>timeout</code>
+              query parameters.</td></tr>
+      <tr><td><a href="/metrics">/metrics</a></td>
+          <td>Exporter self-metrics (process info, probe request counters,
+              probe duration histogram).</td></tr>
+      <tr><td><a href="/healthz">/healthz</a></td>
+          <td>Liveness check — always returns <code>200 OK</code>.</td></tr>
+    </tbody>
+  </table>
+  {device_section}
+</body>
+</html>"""
+
+            encoded = body.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
 
         def _handle_probe(self, query_params: dict[str, list[str]]) -> None:
             """Probe one or more Extron SIS devices and return their metrics."""
