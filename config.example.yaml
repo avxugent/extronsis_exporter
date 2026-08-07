@@ -34,20 +34,20 @@ log_level: INFO
 #   host        Hostname or IP address of the device  (required)
 #   name        Label used in Prometheus metrics       (default: value of host)
 #   port        HTTPS port                             (default: 443)
-#   path        Path of the page to fetch              (default: /)
+#   path        Path of the page to fetch              (default: /www/index.html)
 #   timeout     Request timeout in seconds             (default: 10.0)
 #   verify_tls  Verify the device's TLS certificate     (default: false)
 # devices:
 #   - name: switch-room-101          # Unique label used in all Prometheus metrics
 #     host: 192.168.1.10             # Hostname or IP address of the device
 #     port: 443                      # HTTPS port
-#     path: /                        # Path of the page showing #version
+#     path: /www/index.html          # Path of the page showing #version
 #     timeout: 10.0                  # Request timeout in seconds
 #     verify_tls: false              # Most Extron devices use self-signed certs
 
 #   - name: controller-lobby
 #     host: 192.168.1.20
 #     port: 443
-#     path: /
+#     path: /www/index.html
 #     timeout: 10.0
 #     verify_tls: false

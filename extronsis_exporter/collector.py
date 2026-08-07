@@ -112,7 +112,7 @@ class ExtronCollector:
         return probe_device(
             host=dev_cfg["host"],
             port=int(dev_cfg.get("port", 443)),
-            path=dev_cfg.get("path", "/"),
+            path=dev_cfg.get("path", "/www/index.html"),
             timeout=float(dev_cfg.get("timeout", 10.0)),
             verify_tls=bool(dev_cfg.get("verify_tls", False)),
         )

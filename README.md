@@ -173,7 +173,7 @@ GET /probe?host=192.168.1.10&name=room-101
 | `host` | **yes** | — | Hostname or IP address of the device |
 | `name` | no | value of `host` | Label used in all Prometheus metrics |
 | `port` | no | `443` | HTTPS port |
-| `path` | no | `/` | Path of the page to fetch |
+| `path` | no | `/www/index.html` | Path of the page to fetch |
 | `timeout` | no | `10.0` | Request timeout in seconds |
 | `verify_tls` | no | `false` | Verify the device's TLS certificate |
 
@@ -218,7 +218,7 @@ devices:
   - name: switch-room-101  # Unique name used as a Prometheus label
     host: 192.168.1.10     # Hostname or IP address
     port: 443               # HTTPS port
-    path: /                 # Path of the page showing #version
+    path: /www/index.html   # Path of the page showing #version
     timeout: 10.0            # Request timeout in seconds
     verify_tls: false        # Most Extron devices use self-signed certs
 ```

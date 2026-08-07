@@ -11,6 +11,7 @@ device-specific control protocol.
 from __future__ import annotations
 
 import logging
+import re
 import ssl
 import time
 from dataclasses import dataclass
@@ -34,6 +35,15 @@ _VOID_ELEMENTS = frozenset({
     "area", "base", "br", "col", "embed", "hr", "img", "input",
     "link", "meta", "param", "source", "track", "wbr",
 })
+
+# Some devices (e.g. TLP Pro touch panel login pages) leave <div id="version">
+# empty in the served markup and fill it in client-side via JS on window.onload
+# from a "var version_number = ...;" literal. The literal itself is still
+# present as plain text in the HTML we fetch, so it can be read directly
+# without executing any JS. Unconfigured devices ship this as a "$..."
+# placeholder (mirroring the device's own check_device_specific_string() JS
+# guard), so treat that as "no version" too.
+_JS_VERSION_RE = re.compile(r'var\s+version_number\s*=\s*"([^"]*)"')
 
 
 class _VersionExtractor(HTMLParser):
@@ -68,10 +78,25 @@ class _VersionExtractor(HTMLParser):
 
 
 def extract_version(html: str) -> Optional[str]:
-    """Return the stripped text of the first ``<div id="version">`` in *html*, or None."""
+    """
+    Return the firmware/software version found in *html*, or None.
+
+    Tries the text content of the first ``<div id="version">`` element first;
+    falls back to the ``version_number`` JS literal used by devices that
+    populate that div client-side (see ``_JS_VERSION_RE``).
+    """
     parser = _VersionExtractor()
     parser.feed(html)
-    return parser.version or None
+    if parser.version:
+        return parser.version
+
+    match = _JS_VERSION_RE.search(html)
+    if match:
+        value = match.group(1).strip()
+        if value and not value.startswith("$"):
+            return value
+
+    return None
 
 
 @dataclass
@@ -88,7 +113,7 @@ class ProbeResult:
 def probe_device(
     host: str,
     port: int = DEFAULT_HTTPS_PORT,
-    path: str = "/",
+    path: str = "/www/index.html",
     timeout: float = 10.0,
     verify_tls: bool = False,
 ) -> ProbeResult:

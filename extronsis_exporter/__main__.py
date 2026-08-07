@@ -33,7 +33,7 @@ Endpoints
         host        (required) Hostname or IP address of the device.
         name        Label used in Prometheus metrics. Defaults to the value of host.
         port        HTTPS port. Default: 443.
-        path        Path of the page to fetch. Default: /.
+        path        Path of the page to fetch. Default: /www/index.html.
         timeout     Request timeout in seconds. Default: 10.0.
         verify_tls  Verify the device's TLS certificate (true/false). Default: false.
 
@@ -95,7 +95,7 @@ _DEFAULT_CONFIG: dict[str, Any] = {
 
 _DEVICE_DEFAULTS: dict[str, Any] = {
     "port": 443,
-    "path": "/",
+    "path": "/www/index.html",
     "timeout": 10.0,
     "verify_tls": False,
 }
