@@ -47,8 +47,13 @@ Three files under `extronsis_exporter/`, each with a single responsibility:
 
 - **`prober.py`** — `probe_device()`: opens an `http.client.HTTPSConnection` to the device,
   issues a single `GET` for `path`, and returns a `ProbeResult` (`success`, `status_code`,
-  `version`, `duration_seconds`, `error`). `success` is `True` only for a 2xx/3xx status; all
-  connectivity failures (DNS, TCP, TLS, HTTP-level) are caught and folded into
+  `version`, `duration_seconds`, `error`). `success` is `True` for a 2xx/3xx status, OR if a
+  version was extracted from the body regardless of status — some devices (e.g. TLP Pro touch
+  panel login pages) return 401 with no `WWW-Authenticate` challenge (form-based auth, not HTTP
+  auth) yet still serve the version in the body, and that's a working device, not a failed probe.
+  Version extraction itself always runs against the response body regardless of status, since the
+  body is what tells us whether the 401 is one of these "device is fine, page just requires login"
+  cases. All connectivity failures (DNS, TCP, TLS, HTTP-level) are caught and folded into
   `ProbeResult.error` rather than raised, so the collector can always emit a `probe_success`
   value. TLS verification is opt-in per device (`verify_tls`, default `False`) since most Extron
   devices ship self-signed certs — when disabled, `context.check_hostname = False` and
@@ -56,7 +61,10 @@ Three files under `extronsis_exporter/`, each with a single responsibility:
   at the call site that verification is intentionally off. `_VersionExtractor(HTMLParser)` is a
   small stack-depth-based HTML parser: it starts counting depth on `<div id="version">`, capturing
   all text (including from nested tags) until that div's matching close tag, so the version isn't
-  lost if the value is wrapped in a `<span>` or similar.
+  lost if the value is wrapped in a `<span>` or similar. Devices that populate that div
+  client-side via JS instead of server-rendering it (again, TLP Pro panels) fall back to a regex
+  match on the `var version_number = "...";` literal, which is still present as plain text in the
+  served HTML even though the div itself is empty.
 
 - **`collector.py`** — `ExtronCollector(prometheus_client.registry.Collector)`: turns
   `ProbeResult`s into Prometheus metric families. `collect()` is called fresh on every scrape (no
