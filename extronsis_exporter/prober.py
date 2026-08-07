@@ -26,6 +26,15 @@ DEFAULT_HTTPS_PORT = 443
 # make us buffer an unbounded response.
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
+# HTML5 void elements never get a matching end tag (and aren't necessarily
+# self-closed with "/>" in real-world markup, e.g. "<input ...>"). They must
+# not be counted when tracking nesting depth, or a void element inside
+# #version throws off the depth count for the rest of the document.
+_VOID_ELEMENTS = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+})
+
 
 class _VersionExtractor(HTMLParser):
     """Extracts the text content of the first ``<div id="version">`` element."""
@@ -37,6 +46,8 @@ class _VersionExtractor(HTMLParser):
         self.version: Optional[str] = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
+        if tag in _VOID_ELEMENTS:
+            return
         if self._depth is not None:
             self._depth += 1
             return
@@ -44,7 +55,7 @@ class _VersionExtractor(HTMLParser):
             self._depth = 1
 
     def handle_endtag(self, tag: str) -> None:
-        if self._depth is None:
+        if tag in _VOID_ELEMENTS or self._depth is None:
             return
         self._depth -= 1
         if self._depth == 0:
