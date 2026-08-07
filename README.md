@@ -108,6 +108,17 @@ docker run -d \
   extronsis-exporter
 ```
 
+### Build and push a multiarch release
+
+```bash
+./build-and-push.sh            # tags :latest and :<git-short-sha>
+./build-and-push.sh v1.2.0     # also tags :v1.2.0
+```
+
+Builds `linux/amd64` and `linux/arm64` and pushes to `kristofkeppens/extron-exporter`
+on Docker Hub. Requires `docker login` with push access. The same image/tags are also
+built and pushed automatically by `.github/workflows/docker.yml` on every push to `main`.
+
 ---
 
 ## Endpoints

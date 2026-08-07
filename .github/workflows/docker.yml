@@ -22,15 +22,15 @@ jobs:
 
       # Generates OCI-compliant image metadata (tags + labels) from the repo
       # context. On a push to main this produces:
-      #   kristofkeppens/extronsis-exporter:latest
-      #   kristofkeppens/extronsis-exporter:main
-      #   kristofkeppens/extronsis-exporter:<short-sha>
+      #   kristofkeppens/extron-exporter:latest
+      #   kristofkeppens/extron-exporter:main
+      #   kristofkeppens/extron-exporter:<short-sha>
       # On a scheduled run the same tags are applied based on the current HEAD.
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: kristofkeppens/extronsis-exporter
+          images: kristofkeppens/extron-exporter
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
@@ -57,5 +57,5 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Cache layers in the registry to speed up incremental builds.
-          cache-from: type=registry,ref=kristofkeppens/extronsis-exporter:buildcache
-          cache-to: type=registry,ref=kristofkeppens/extronsis-exporter:buildcache,mode=max
+          cache-from: type=registry,ref=kristofkeppens/extron-exporter:buildcache
+          cache-to: type=registry,ref=kristofkeppens/extron-exporter:buildcache,mode=max

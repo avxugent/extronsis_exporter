@@ -12,8 +12,8 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM python:3.12-slim
 
-LABEL org.opencontainers.image.title="extronsis-exporter" \
-      org.opencontainers.image.description="Prometheus exporter for Extron SIS devices" \
+LABEL org.opencontainers.image.title="extron-exporter" \
+      org.opencontainers.image.description="Prometheus exporter for Extron device web UIs" \
       org.opencontainers.image.source="https://github.com/kristofkeppens/extronsis-exporter"
 
 WORKDIR /app
