@@ -1,5 +1,5 @@
 """
-Entry point for the Extron SIS Prometheus Exporter.
+Entry point for the Extron Prometheus Exporter.
 
 Usage::
 
@@ -17,27 +17,25 @@ Endpoints
     Intended for Prometheus to scrape the exporter process itself.
 
 ``GET /probe``
-    Probe one or more Extron SIS devices and return their metrics.
+    Probe one or more Extron device web UIs and return their metrics.
 
     **Config-file mode** — scrapes all devices listed in the configuration file:
 
         GET /probe
 
-    **URL-parameter mode** — scrapes a single device specified via query
+    **URL-parameter mode** — probes a single device specified via query
     parameters; no config-file entry is required for that device:
 
-        GET /probe?host=192.168.1.10&name=room-101&num_inputs=4
+        GET /probe?host=192.168.1.10&name=room-101
 
     Available query parameters:
 
         host        (required) Hostname or IP address of the device.
         name        Label used in Prometheus metrics. Defaults to the value of host.
-        port        SSH port. Default: 22023.
-        username    SSH username. Default: admin.
-        password    SSH password. Default: empty string.
-        timeout     Per-command timeout in seconds. Default: 10.0.
-        num_inputs  Number of inputs to query. Default: 8.
-        num_outputs Number of outputs to query. Default: 1.
+        port        HTTPS port. Default: 443.
+        path        Path of the page to fetch. Default: /.
+        timeout     Request timeout in seconds. Default: 10.0.
+        verify_tls  Verify the device's TLS certificate (true/false). Default: false.
 
 ``GET /healthz``
     Liveness check; always returns ``200 OK``.
@@ -96,12 +94,10 @@ _DEFAULT_CONFIG: dict[str, Any] = {
 }
 
 _DEVICE_DEFAULTS: dict[str, Any] = {
-    "port": 22023,
-    "username": "admin",
-    "password": "",
+    "port": 443,
+    "path": "/",
     "timeout": 10.0,
-    "num_inputs": 8,
-    "num_outputs": 1,
+    "verify_tls": False,
 }
 
 
@@ -131,6 +127,10 @@ def load_config(path: str) -> dict[str, Any]:
     return cfg
 
 
+def _parse_bool(raw: str) -> bool:
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 def _device_from_query_params(query_params: dict[str, list[str]]) -> dict[str, Any]:
     """
     Build a device configuration dict from URL query parameters.
@@ -142,11 +142,11 @@ def _device_from_query_params(query_params: dict[str, list[str]]) -> dict[str, A
         "host": host,
         "name": query_params.get("name", [host])[0],
         "port": int(query_params.get("port", [_DEVICE_DEFAULTS["port"]])[0]),
-        "username": query_params.get("username", [_DEVICE_DEFAULTS["username"]])[0],
-        "password": query_params.get("password", [_DEVICE_DEFAULTS["password"]])[0],
+        "path": query_params.get("path", [_DEVICE_DEFAULTS["path"]])[0],
         "timeout": float(query_params.get("timeout", [_DEVICE_DEFAULTS["timeout"]])[0]),
-        "num_inputs": int(query_params.get("num_inputs", [_DEVICE_DEFAULTS["num_inputs"]])[0]),
-        "num_outputs": int(query_params.get("num_outputs", [_DEVICE_DEFAULTS["num_outputs"]])[0]),
+        "verify_tls": _parse_bool(
+            query_params.get("verify_tls", [str(_DEVICE_DEFAULTS["verify_tls"])])[0]
+        ),
     }
 
 
@@ -181,8 +181,8 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
             num_devices = len(cfg["devices"])
             device_rows = "".join(
                 f"<tr><td>{dev['name']}</td><td>{dev['host']}</td>"
-                f"<td>{dev['port']}</td><td>{dev['num_inputs']}</td>"
-                f"<td>{dev['num_outputs']}</td></tr>"
+                f"<td>{dev['port']}</td><td>{dev['path']}</td>"
+                f"<td>{dev['verify_tls']}</td></tr>"
                 for dev in cfg["devices"]
             )
             device_section = (
@@ -192,7 +192,7 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
                   <thead>
                     <tr>
                       <th>Name</th><th>Host</th><th>Port</th>
-                      <th>Inputs</th><th>Outputs</th>
+                      <th>Path</th><th>Verify TLS</th>
                     </tr>
                   </thead>
                   <tbody>{device_rows}</tbody>
@@ -227,18 +227,17 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
 <body>
   <h1>extronsis-exporter</h1>
   <p>Prometheus exporter for <a href="https://www.extron.com/" target="_blank">Extron</a>
-     SIS devices over SSH.</p>
+     device web UIs over HTTPS.</p>
 
   <h2>Endpoints</h2>
   <table class="endpoints">
     <thead><tr><th>Path</th><th>Description</th></tr></thead>
     <tbody>
       <tr><td><a href="/probe">/probe</a></td>
-          <td>Probe Extron SIS device(s) and return their metrics.
+          <td>Probe Extron device(s) and return their metrics.
               Accepts optional <code>host</code>, <code>name</code>,
-              <code>port</code>, <code>num_inputs</code>, <code>num_outputs</code>,
-              <code>username</code>, <code>password</code>, <code>timeout</code>
-              query parameters.</td></tr>
+              <code>port</code>, <code>path</code>, <code>timeout</code>,
+              <code>verify_tls</code> query parameters.</td></tr>
       <tr><td><a href="/metrics">/metrics</a></td>
           <td>Exporter self-metrics (process info, probe request counters,
               probe duration histogram).</td></tr>
@@ -258,7 +257,7 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
             self.wfile.write(encoded)
 
         def _handle_probe(self, query_params: dict[str, list[str]]) -> None:
-            """Probe one or more Extron SIS devices and return their metrics."""
+            """Probe one or more Extron device web UIs and return their metrics."""
             start = time.monotonic()
 
             # URL-parameter mode: at least `host` must be present.
@@ -338,7 +337,7 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="extronsis-exporter",
-        description="Prometheus exporter for Extron SIS devices (SSH, port 22023).",
+        description="Prometheus exporter for Extron device web UIs (HTTPS).",
     )
     parser.add_argument(
         "-c", "--config",
@@ -415,9 +414,8 @@ def main(argv: list[str] | None = None) -> None:
         )
         for dev in cfg["devices"]:
             logger.info(
-                "  Device: %s  host=%s:%d  inputs=%d  outputs=%d",
-                dev["name"], dev["host"], dev["port"],
-                dev["num_inputs"], dev["num_outputs"],
+                "  Device: %s  host=%s:%d%s",
+                dev["name"], dev["host"], dev["port"], dev["path"],
             )
     else:
         logger.info(

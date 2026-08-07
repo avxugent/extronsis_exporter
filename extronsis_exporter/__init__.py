@@ -1,1 +1,1 @@
-"""Extron SIS Prometheus Exporter."""
+"""Extron Prometheus Exporter."""

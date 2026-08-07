@@ -16,7 +16,9 @@ log_level: INFO
 
 # ── Devices ───────────────────────────────────────────────────────────────────
 
-# List of Extron devices to monitor.
+# List of Extron devices to monitor (video switches, controllers, touch
+# panels, DSPs, ...). Any device that exposes a web UI over HTTPS with a
+# <div id="version"> element showing the firmware/software version works.
 #
 # This list is OPTIONAL. When left empty (or omitted entirely) the exporter
 # operates in URL-parameter mode only: every probe request must supply the
@@ -31,27 +33,21 @@ log_level: INFO
 # Supported query parameters (all except 'host' are optional):
 #   host        Hostname or IP address of the device  (required)
 #   name        Label used in Prometheus metrics       (default: value of host)
-#   port        SSH port                               (default: 22023)
-#   username    SSH username                           (default: admin)
-#   password    SSH password                           (default: empty)
-#   timeout     Per-command timeout in seconds         (default: 10.0)
-#   num_inputs  Number of inputs to query              (default: 8)
-#   num_outputs Number of outputs to query             (default: 1)
+#   port        HTTPS port                             (default: 443)
+#   path        Path of the page to fetch              (default: /)
+#   timeout     Request timeout in seconds             (default: 10.0)
+#   verify_tls  Verify the device's TLS certificate     (default: false)
 # devices:
-#   - name: in1804-room-101          # Unique label used in all Prometheus metrics
+#   - name: switch-room-101          # Unique label used in all Prometheus metrics
 #     host: 192.168.1.10             # Hostname or IP address of the device
-#     port: 22023                    # SSH port (Extron SIS default: 22023)
-#     username: admin                # SSH username (default: admin)
-#     password: ""                   # SSH password (leave empty if none)
-#     timeout: 10.0                  # Per-command timeout in seconds
-#     num_inputs: 8                  # Number of inputs on the device (IN1804 = 8)
-#     num_outputs: 1                 # Number of outputs on the device (IN1804 = 1)
+#     port: 443                      # HTTPS port
+#     path: /                        # Path of the page showing #version
+#     timeout: 10.0                  # Request timeout in seconds
+#     verify_tls: false              # Most Extron devices use self-signed certs
 
-#   - name: in1804-room-102
-#     host: 192.168.1.11
-#     port: 22023
-#     username: admin
-#     password: "secret"
+#   - name: controller-lobby
+#     host: 192.168.1.20
+#     port: 443
+#     path: /
 #     timeout: 10.0
-#     num_inputs: 8
-#     num_outputs: 1
+#     verify_tls: false
