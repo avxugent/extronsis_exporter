@@ -124,8 +124,10 @@ def probe_device(
     reported via :attr:`ProbeResult.success` / :attr:`ProbeResult.error`
     rather than raised, so callers can always emit a ``probe_success`` metric.
     A response is only considered successful if the server returns a 2xx/3xx
-    status; the firmware version is extracted on a best-effort basis and left
-    ``None`` if the ``#version`` element isn't found.
+    status. The firmware version is extracted on a best-effort basis from
+    whatever body was returned -- even on a non-2xx/3xx status, since some
+    devices' login pages return 401 yet still serve the version in the body
+    -- and is left ``None`` if it can't be found.
     """
     start = time.monotonic()
     result = ProbeResult()
@@ -142,12 +144,17 @@ def probe_device(
         result.status_code = response.status
         body = response.read(_MAX_RESPONSE_BYTES)
         result.success = 200 <= response.status < 400
-        if result.success:
-            html = body.decode("utf-8", errors="replace")
-            result.version = extract_version(html)
-            if result.version is None:
-                logger.warning("No #version element found on %s:%d%s", host, port, path)
-        else:
+
+        # Some devices (e.g. TLP Pro touch panels) return 401 for their login
+        # page itself, with no WWW-Authenticate challenge -- it's form-based
+        # auth, not HTTP auth -- and the page body (including the version
+        # literal) is served regardless. So extraction is attempted on any
+        # response body, independent of `success`/status code.
+        html = body.decode("utf-8", errors="replace")
+        result.version = extract_version(html)
+        if result.version is None:
+            logger.warning("No #version element found on %s:%d%s", host, port, path)
+        if not result.success:
             logger.warning("Probe for %s:%d%s returned HTTP %d", host, port, path, response.status)
     except (OSError, HTTPException, ssl.SSLError) as exc:
         result.error = str(exc)
