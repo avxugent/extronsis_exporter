@@ -69,6 +69,21 @@ def test_index_renders(server):
     assert status == 200 and "extronsis-exporter" in body and "cfg.local" in body
 
 
+def test_index_escapes_device_fields(monkeypatch):
+    cfg = {"devices": [{"name": "<script>alert(1)</script>", "host": "a&b", "port": 443,
+                        "path": '"><img src=x>', "verify_tls": False}]}
+    httpd = _serve(cfg)
+    try:
+        _, body = get(f"http://127.0.0.1:{httpd.server_address[1]}/")
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+    assert "<script>alert(1)</script>" not in body
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in body
+    assert "a&amp;b" in body
+    assert "<img src=x>" not in body
+
+
 def test_probe_url_parameter_mode(server):
     base, probed = server()
     status, body = get(base + "/probe?host=h1&name=room&port=8443")
