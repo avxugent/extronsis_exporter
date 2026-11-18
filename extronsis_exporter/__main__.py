@@ -74,6 +74,7 @@ import signal
 import sys
 import threading
 import time
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -309,9 +310,9 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
             """Render a minimal HTML landing page with application info."""
             num_devices = len(cfg["devices"])
             device_rows = "".join(
-                f"<tr><td>{dev['name']}</td><td>{dev['host']}</td>"
-                f"<td>{dev['port']}</td><td>{dev['path']}</td>"
-                f"<td>{dev['verify_tls']}</td></tr>"
+                f"<tr><td>{escape(str(dev['name']))}</td><td>{escape(str(dev['host']))}</td>"
+                f"<td>{escape(str(dev['port']))}</td><td>{escape(str(dev['path']))}</td>"
+                f"<td>{escape(str(dev['verify_tls']))}</td></tr>"
                 for dev in cfg["devices"]
             )
             device_section = (
