@@ -21,6 +21,12 @@ RUN apt-get update \
     && apt-get upgrade -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
+# pip is only needed in the builder stage. Removing it from the runtime image
+# drops its vendored copies of urllib3/msgpack/setuptools, which otherwise show
+# up as (unreachable) findings in image scans, and shrinks the attack surface.
+RUN python -m pip uninstall -y pip \
+    && rm -rf /root/.cache
+
 WORKDIR /app
 
 # Copy installed packages from the builder stage
