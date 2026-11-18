@@ -296,6 +296,11 @@ scrape_configs:
 no DNS) and `allowed_ports` (default `[443]`) restrict what `/probe?host=...` may contact; other
 targets get `403` and are never contacted. Devices under `devices:` are not checked.
 
+The built-in default config (baked into the Docker image) enables it for the UGent Extron naming
+scheme (`matrix*`, `vsw*`, `in*`, `tlp*`, `ipcp*`, `ctrl*`, `tp*` in `ugent.be` / `private.ugent.be`);
+mount your own config over `/etc/extronsis-exporter/config.yaml` to change it, or set
+`allowed_hosts: []` to disable the restriction.
+
 ```yaml
 allowed_hosts:
   - '^switch\d+\.example\.org$'
