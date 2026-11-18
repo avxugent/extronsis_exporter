@@ -46,7 +46,7 @@ pytest --cov
 ruff check .
 ```
 
-CI (`.github/workflows/`): `ci.yml` (ruff, pytest on 3.10–3.13, pip-audit, Trivy image scan),
+CI (`.github/workflows/`): `ci.yml` (ruff, pytest on 3.10–3.15, pip-audit, Trivy image scan),
 `codeql.yml`, `dependency-review.yml`; `docker.yml` builds and pushes the multiarch image on push
 to `main` only after `ci.yml` passes. Dependabot (`.github/dependabot.yml`) covers pip, Docker
 and GitHub Actions.
