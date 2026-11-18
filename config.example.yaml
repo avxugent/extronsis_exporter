@@ -46,12 +46,17 @@ listen_port: 9877
 # anchor them tightly). Rejected requests get 403. Devices listed under
 # `devices:` below are never checked. Empty/omitted = unrestricted.
 #
-# allowed_hosts:
-#   - '^switch\d+\.example\.org$'
+# The built-in default (this file is baked into the Docker image) allows the
+# UGent Extron naming scheme: matrix*, vsw*, in*, tlp*, ipcp*, ctrl* and tp*,
+# in the ugent.be or private.ugent.be domain. Anything else gets 403 in URL
+# mode. Mount your own config over /etc/extronsis-exporter/config.yaml to change
+# it; set `allowed_hosts: []` to disable the restriction.
+allowed_hosts:
+  - '(?i)(matrix|vsw|in|tlp|ipcp|ctrl|tp)[a-z0-9-]*\.(private\.)?ugent\.be'
 #   - '192\.168\.1\.\d+'
 #
 # Ports URL mode may target (only enforced when allowed_hosts is set).
-# allowed_ports: [443]
+allowed_ports: [443]
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
