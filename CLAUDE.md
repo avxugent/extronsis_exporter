@@ -100,6 +100,25 @@ Three files under `extronsis_exporter/`, each with a single responsibility:
 If a request supplies `host` as a query param, URL-parameter mode wins for that request even if
 `devices:` is also configured — the two modes are per-request, not mutually exclusive globally.
 
+### Securing the HTTP surface
+
+All optional, all default to *off* (open + startup warning) so existing deployments don't break;
+implemented in `__main__.py`, mirroring lw3-exporter. TLS is not handled here — use a proxy.
+`/healthz` is always exempt.
+
+- **Client IP allowlist**: `allowed_clients` (IPs/CIDRs → `ip_network` objects in `load_config`;
+  `EXTRONSIS_ALLOWED_CLIENTS` comma-separated env wins). `_client_allowed()` at the top of
+  `Handler.do_GET` against `self.client_address[0]` (IPv4-mapped IPv6 normalised); 403. Checked
+  *before* auth. `X-Forwarded-For` is deliberately not trusted.
+- **Basic auth**: `auth.username`/`auth.password` or `EXTRONSIS_AUTH_USERNAME`/`_PASSWORD` (env
+  wins); `hmac.compare_digest`; 401 + `WWW-Authenticate`. Only one of the two set → startup error.
+- **Target allowlist**: `allowed_hosts` (regexes, `fullmatch` on the literal host, no DNS) and
+  `allowed_ports` (default `[443]`, enforced only when `allowed_hosts` is set). `_target_allowed()`
+  in `_handle_probe`, URL mode only (config-file devices are trusted); 403 before any connection.
+
+`scripts/smoke-test.sh` starts the real process and checks all of this plus clean SIGTERM
+(runs in CI). Unit coverage is in `tests/test_access_control.py`.
+
 ### `/metrics` vs `/probe` — do not confuse these
 
 - `/probe` returns **device** metrics (`probe_*`, `extron_firmware_info`), built from a fresh

@@ -9,6 +9,50 @@ listen_host: "0.0.0.0"
 # Port the HTTP server listens on.
 listen_port: 9877
 
+# ── Access control ────────────────────────────────────────────────────────────
+# All of this is optional and off by default (a warning is logged at startup).
+# /healthz is never restricted (container/orchestrator liveness).
+
+# Client IP allowlist: only these source IPs/CIDRs may call /, /probe and
+# /metrics (others get 403). Use it to limit access to your Prometheus server.
+# Env var EXTRONSIS_ALLOWED_CLIENTS (comma-separated) overrides. Behind a reverse
+# proxy the exporter sees the proxy's address, not the real client's -- enforce
+# the ACL at the proxy in that case. Empty = any client.
+#
+# allowed_clients:
+#   - 10.1.2.3
+#   - 10.1.0.0/24
+
+# HTTP Basic auth protecting /, /probe and /metrics. Env vars
+# EXTRONSIS_AUTH_USERNAME / EXTRONSIS_AUTH_PASSWORD override these values --
+# prefer them over a plaintext password in this file. The exporter serves plain
+# HTTP, so run it behind a TLS-terminating reverse proxy.
+#
+# Prometheus side:
+#   scrape_configs:
+#     - job_name: extron
+#       metrics_path: /probe
+#       basic_auth:
+#         username: prometheus
+#         password_file: /etc/prometheus/extron.pass
+#
+# auth:
+#   username: prometheus
+#   password: change-me
+
+# Restrict which targets GET /probe?host=... may contact. Without this, any
+# caller can make the exporter send a request to an arbitrary host and path.
+# Regexes are fullmatch()ed against the literal host string (no DNS resolution --
+# anchor them tightly). Rejected requests get 403. Devices listed under
+# `devices:` below are never checked. Empty/omitted = unrestricted.
+#
+# allowed_hosts:
+#   - '^switch\d+\.example\.org$'
+#   - '192\.168\.1\.\d+'
+#
+# Ports URL mode may target (only enforced when allowed_hosts is set).
+# allowed_ports: [443]
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 
 # Minimum log level: DEBUG | INFO | WARNING | ERROR | CRITICAL

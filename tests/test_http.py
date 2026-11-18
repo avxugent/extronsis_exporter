@@ -8,7 +8,7 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 from extronsis_exporter import collector
-from extronsis_exporter.__main__ import _make_handler
+from extronsis_exporter.__main__ import _DEFAULT_CONFIG, _make_handler
 from extronsis_exporter.prober import ProbeResult
 
 
@@ -30,7 +30,7 @@ def server(monkeypatch):
     servers = []
 
     def start(devices=()):
-        cfg = {"devices": [
+        cfg = {**_DEFAULT_CONFIG, "devices": [
             {"name": "cfg", "host": "cfg.local", "port": 443, "path": "/www/index.html",
              "timeout": 10.0, "verify_tls": False} for _ in devices
         ]}

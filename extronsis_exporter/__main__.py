@@ -38,16 +38,41 @@ Endpoints
         verify_tls  Verify the device's TLS certificate (true/false). Default: false.
 
 ``GET /healthz``
-    Liveness check; always returns ``200 OK``.
+    Liveness check; always returns ``200 OK``. Never requires auth.
+
+Access control (all optional, all default to off with a startup warning)
+-----------------------------------------------------------------------
+
+``allowed_clients``
+    IPs / CIDRs (or the comma-separated ``EXTRONSIS_ALLOWED_CLIENTS`` env var,
+    which takes precedence) that may call ``/``, ``/probe`` and ``/metrics``;
+    others get ``403``. Behind a reverse proxy the source address is the
+    proxy's, so enforce the ACL at the proxy instead.
+
+``auth.username`` / ``auth.password``
+    HTTP Basic auth for ``/``, ``/probe`` and ``/metrics`` (or the
+    ``EXTRONSIS_AUTH_USERNAME`` / ``EXTRONSIS_AUTH_PASSWORD`` env vars, which
+    take precedence). The exporter speaks plain HTTP; run it behind a
+    TLS-terminating proxy.
+
+``allowed_hosts`` / ``allowed_ports``
+    Restrict URL-parameter mode: ``host`` must ``fullmatch`` one of the regexes
+    (literal string, no DNS) and ``port`` must be in ``allowed_ports`` (default
+    ``[443]``). Others get ``403``. Config-file devices are never checked.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
+import hmac
+import ipaddress
 import logging
 import os
+import re
 import signal
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -90,6 +115,17 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "listen_host": "0.0.0.0",  # noqa: S104 -- intentional: container exporter
     "listen_port": 9877,
     "log_level": "INFO",
+    # HTTP Basic auth for the exporter's own endpoints. Disabled unless both
+    # username and password are set (config file or EXTRONSIS_AUTH_* env vars).
+    "auth": {"username": None, "password": None},
+    # Source-IP allowlist (IPs/CIDRs) for the exporter's own endpoints, e.g. the
+    # Prometheus server. Empty = any client. Env EXTRONSIS_ALLOWED_CLIENTS overrides.
+    "allowed_clients": [],
+    # URL-parameter mode target restrictions. Empty allowed_hosts = unrestricted.
+    # When set, `host` must fullmatch one of the regexes and `port` must be in
+    # allowed_ports. Config-file devices are never checked.
+    "allowed_hosts": [],
+    "allowed_ports": [443],
     "devices": [],
 }
 
@@ -115,6 +151,38 @@ def load_config(path: str) -> dict[str, Any]:
         data = yaml.safe_load(fh) or {}
 
     cfg.update(data)
+
+    # Env vars override the config file so the password need not live in a file.
+    auth = dict(_DEFAULT_CONFIG["auth"])
+    auth.update(cfg.get("auth") or {})
+    auth["username"] = os.environ.get("EXTRONSIS_AUTH_USERNAME") or auth["username"]
+    auth["password"] = os.environ.get("EXTRONSIS_AUTH_PASSWORD") or auth["password"]
+    if bool(auth["username"]) != bool(auth["password"]):
+        raise ValueError("'auth' needs both 'username' and 'password' (or neither).")
+    cfg["auth"] = auth
+
+    raw_clients = os.environ.get("EXTRONSIS_ALLOWED_CLIENTS")
+    if raw_clients:
+        raw_clients = [c.strip() for c in raw_clients.split(",") if c.strip()]
+    else:
+        raw_clients = cfg["allowed_clients"] or []
+    networks = []
+    for entry in raw_clients:
+        try:
+            networks.append(ipaddress.ip_network(str(entry), strict=False))
+        except ValueError as exc:
+            raise ValueError(f"Invalid allowed_clients entry {entry!r}: {exc}") from exc
+    cfg["allowed_clients"] = networks
+
+    # Compile allowed_hosts up front so a bad pattern fails at startup.
+    compiled = []
+    for pattern in cfg["allowed_hosts"] or []:
+        try:
+            compiled.append(re.compile(str(pattern)))
+        except re.error as exc:
+            raise ValueError(f"Invalid allowed_hosts regex {pattern!r}: {exc}") from exc
+    cfg["allowed_hosts"] = compiled
+    cfg["allowed_ports"] = [int(p) for p in (cfg["allowed_ports"] or [])]
 
     for i, dev in enumerate(cfg["devices"]):
         if "name" not in dev:
@@ -150,6 +218,34 @@ def _device_from_query_params(query_params: dict[str, list[str]]) -> dict[str, A
     }
 
 
+def _target_allowed(cfg: dict[str, Any], host: str, port: int) -> bool:
+    """
+    Check a URL-mode target against ``allowed_hosts``/``allowed_ports``.
+    Matches the literal host string given (no DNS resolution). Always True
+    when ``allowed_hosts`` is empty.
+    """
+    if not cfg["allowed_hosts"]:
+        return True
+    return any(p.fullmatch(host) for p in cfg["allowed_hosts"]) and port in cfg["allowed_ports"]
+
+
+def _client_allowed(cfg: dict[str, Any], client_ip: str) -> bool:
+    """
+    Check the connecting client's address against ``allowed_clients``.
+    Always True when the list is empty; unparseable addresses are rejected.
+    """
+    if not cfg["allowed_clients"]:
+        return True
+    try:
+        addr = ipaddress.ip_address(client_ip.split("%", 1)[0])
+    except ValueError:
+        return False
+    # Dual-stack sockets report IPv4 clients as ::ffff:a.b.c.d.
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+        addr = addr.ipv4_mapped
+    return any(addr.version == net.version and addr in net for net in cfg["allowed_clients"])
+
+
 # ---------------------------------------------------------------------------
 # HTTP handler
 # ---------------------------------------------------------------------------
@@ -157,10 +253,43 @@ def _device_from_query_params(query_params: dict[str, list[str]]) -> dict[str, A
 def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
     """Return a :class:`BaseHTTPRequestHandler` subclass closed over *cfg*."""
 
+    auth_user = cfg["auth"]["username"]
+    auth_pass = cfg["auth"]["password"]
+    expected_auth = (
+        b"Basic " + base64.b64encode(f"{auth_user}:{auth_pass}".encode())
+        if auth_user and auth_pass
+        else None
+    )
+
     class Handler(BaseHTTPRequestHandler):
+
+        def _authorized(self) -> bool:
+            """Constant-time check of the Basic auth header (always True if auth is off)."""
+            if expected_auth is None:
+                return True
+            supplied = self.headers.get("Authorization", "").encode("utf-8")
+            return hmac.compare_digest(supplied, expected_auth)
 
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
+
+            # /healthz stays open for container/orchestrator liveness checks.
+            if parsed.path != "/healthz":
+                if not _client_allowed(cfg, self.client_address[0]):
+                    logger.warning(
+                        "Rejected request from %s (not in allowed_clients)", self.client_address[0]
+                    )
+                    self.send_error(403, "Client not allowed")
+                    return
+                if not self._authorized():
+                    self.send_response(401)
+                    self.send_header(
+                        "WWW-Authenticate", 'Basic realm="extronsis-exporter", charset="UTF-8"'
+                    )
+                    self.send_header("Content-Type", "text/plain")
+                    self.end_headers()
+                    self.wfile.write(b"Unauthorized")
+                    return
 
             if parsed.path == "/":
                 self._handle_index()
@@ -267,6 +396,14 @@ def _make_handler(cfg: dict[str, Any]) -> type[BaseHTTPRequestHandler]:
                 except ValueError as exc:
                     _PROBE_REQUESTS_TOTAL.labels(result="error").inc()
                     self.send_error(400, f"Invalid query parameter: {exc}")
+                    return
+                if not _target_allowed(cfg, devices[0]["host"], devices[0]["port"]):
+                    _PROBE_REQUESTS_TOTAL.labels(result="error").inc()
+                    logger.warning(
+                        "Rejected URL-mode probe for %s:%d (not in allowed_hosts/allowed_ports)",
+                        devices[0]["host"], devices[0]["port"],
+                    )
+                    self.send_error(403, "Target host/port not allowed")
                     return
                 logger.debug(
                     "Probing device from URL parameters: %s (%s:%d)",
@@ -424,6 +561,29 @@ def main(argv: list[str] | None = None) -> None:
             cfg["listen_host"], cfg["listen_port"],
         )
 
+    if cfg["auth"]["username"]:
+        logger.info("HTTP Basic auth enabled (all endpoints except /healthz)")
+    else:
+        logger.warning("HTTP auth NOT configured — /probe and /metrics are open to anyone")
+
+    if cfg["allowed_clients"]:
+        logger.info(
+            "Client IP allowlist enabled: %s (all endpoints except /healthz)",
+            ", ".join(str(n) for n in cfg["allowed_clients"]),
+        )
+    else:
+        logger.warning("allowed_clients NOT configured — any client IP may reach the endpoints")
+
+    if cfg["allowed_hosts"]:
+        logger.info(
+            "URL-mode targets restricted: %d host pattern(s), ports %s",
+            len(cfg["allowed_hosts"]), cfg["allowed_ports"],
+        )
+    else:
+        logger.warning(
+            "allowed_hosts NOT configured — /probe?host=... can target any host and path"
+        )
+
     logger.info(
         "Listening on http://%s:%d  probe=>/probe  self-metrics=>/metrics",
         cfg["listen_host"], cfg["listen_port"],
@@ -438,7 +598,9 @@ def main(argv: list[str] | None = None) -> None:
     # --- Graceful shutdown ---
     def _handle_signal(signum: int, _frame: Any) -> None:
         logger.info("Received signal %d, shutting down…", signum)
-        httpd.shutdown()
+        # shutdown() blocks until serve_forever() returns; calling it directly
+        # here would deadlock since the handler runs on the serve_forever thread.
+        threading.Thread(target=httpd.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
