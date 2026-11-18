@@ -4,7 +4,7 @@
 [![CodeQL](https://github.com/avxugent/extronsis_exporter/actions/workflows/codeql.yml/badge.svg)](https://github.com/avxugent/extronsis_exporter/actions/workflows/codeql.yml)
 [![Docker build](https://github.com/avxugent/extronsis_exporter/actions/workflows/docker.yml/badge.svg)](https://github.com/avxugent/extronsis_exporter/actions/workflows/docker.yml)
 [![Dependabot](https://img.shields.io/badge/dependabot-enabled-025e8c?logo=dependabot)](https://github.com/avxugent/extronsis_exporter/security/dependabot)
-[![Docker Hub](https://img.shields.io/docker/pulls/kristofkeppens/extron-exporter?logo=docker)](https://hub.docker.com/r/kristofkeppens/extron-exporter)
+[![Container image](https://img.shields.io/badge/ghcr.io-avxugent%2Fextron--exporter-2496ed?logo=docker&logoColor=white)](https://github.com/avxugent/extronsis_exporter/pkgs/container/extron-exporter)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)
 ![Code style: ruff](https://img.shields.io/badge/lint-ruff-261230?logo=ruff)
 
@@ -123,8 +123,9 @@ docker run -d \
 ./build-and-push.sh v1.2.0     # also tags :v1.2.0
 ```
 
-Builds `linux/amd64` and `linux/arm64` and pushes to `kristofkeppens/extron-exporter`
-on Docker Hub. Requires `docker login` with push access. The same image/tags are also
+Builds `linux/amd64` and `linux/arm64` and pushes to `ghcr.io/avxugent/extron-exporter`
+on the GitHub Container Registry. Requires `docker login ghcr.io` (a personal access token with
+`write:packages`) for a user with push access. The same image/tags are also
 built and pushed automatically by `.github/workflows/docker.yml` on every push to `main`.
 
 ---

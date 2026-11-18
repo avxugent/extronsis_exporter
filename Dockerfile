@@ -14,7 +14,7 @@ FROM python:3.15-slim
 
 LABEL org.opencontainers.image.title="extron-exporter" \
       org.opencontainers.image.description="Prometheus exporter for Extron device web UIs" \
-      org.opencontainers.image.source="https://github.com/kristofkeppens/extronsis-exporter"
+      org.opencontainers.image.source="https://github.com/avxugent/extronsis_exporter"
 
 # Pick up Debian security fixes published after the base image was built.
 RUN apt-get update \

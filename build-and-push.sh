@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
 # Build and push the extron-exporter Docker image (linux/amd64 + linux/arm64)
-# to Docker Hub as kristofkeppens/extron-exporter.
+# to GitHub Container Registry as ghcr.io/avxugent/extron-exporter.
 #
-# Requires: docker buildx, and `docker login` already done for an account
-# with push access to kristofkeppens/extron-exporter.
+# Requires: docker buildx, and `docker login ghcr.io` already done (a PAT with
+# write:packages) for an account with push access to ghcr.io/avxugent/extron-exporter.
 #
 # Usage:
 #   ./build-and-push.sh            # tags :latest and :<git-short-sha>
@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-IMAGE="kristofkeppens/extron-exporter"
+IMAGE="ghcr.io/avxugent/extron-exporter"
 PLATFORMS="linux/amd64,linux/arm64"
 BUILDER="extron-exporter-builder"
 
