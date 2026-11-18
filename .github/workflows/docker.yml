@@ -30,15 +30,15 @@ jobs:
 
       # Generates OCI-compliant image metadata (tags + labels) from the repo
       # context. On a push to main this produces:
-      #   kristofkeppens/extron-exporter:latest
-      #   kristofkeppens/extron-exporter:main
-      #   kristofkeppens/extron-exporter:<short-sha>
+      #   ghcr.io/avxugent/extron-exporter:latest
+      #   ghcr.io/avxugent/extron-exporter:main
+      #   ghcr.io/avxugent/extron-exporter:<short-sha>
       # On a scheduled run the same tags are applied based on the current HEAD.
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: kristofkeppens/extron-exporter
+          images: ghcr.io/avxugent/extron-exporter
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
@@ -50,11 +50,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Log in to Docker Hub
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push multiarch image
         uses: docker/build-push-action@v7
@@ -65,5 +66,5 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Cache layers in the registry to speed up incremental builds.
-          cache-from: type=registry,ref=kristofkeppens/extron-exporter:buildcache
-          cache-to: type=registry,ref=kristofkeppens/extron-exporter:buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/avxugent/extron-exporter:buildcache
+          cache-to: type=registry,ref=ghcr.io/avxugent/extron-exporter:buildcache,mode=max
