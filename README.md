@@ -218,6 +218,12 @@ scrape_configs:
 listen_host: "0.0.0.0"   # Interface to listen on
 listen_port: 9877          # Port to listen on
 
+# Access control (all optional, see "Securing the exporter")
+# allowed_clients: [10.1.2.3, 10.1.0.0/24]
+# auth: {username: prometheus, password: change-me}
+# allowed_hosts: ['^switch\d+\.example\.org$']
+# allowed_ports: [443]
+
 # Logging
 log_level: INFO            # DEBUG | INFO | WARNING | ERROR | CRITICAL
 
@@ -236,6 +242,8 @@ devices:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `EXTRONSIS_CONFIG` | Path to the configuration file | `config.yaml` |
+| `EXTRONSIS_ALLOWED_CLIENTS` | Comma-separated IPs/CIDRs allowed to call the endpoints (overrides `allowed_clients`) | — |
+| `EXTRONSIS_AUTH_USERNAME` / `EXTRONSIS_AUTH_PASSWORD` | HTTP Basic auth credentials (override `auth`) | — |
 
 ### CLI flags
 
@@ -248,6 +256,51 @@ options:
   --port PORT           Override the HTTP listen port
   --log-level LEVEL     Override the log level (DEBUG/INFO/WARNING/ERROR/CRITICAL)
 ```
+
+---
+
+## Securing the exporter
+
+By default `/`, `/probe` and `/metrics` are open and `/probe?host=...` can target any host and
+path, so restrict access to the port (9877) to your Prometheus server(s). Three optional,
+independent controls are built in; all default to off and log a warning at startup. `/healthz` is
+never restricted.
+
+**Client IP allowlist** — only listed source IPs/CIDRs may call `/`, `/probe` and `/metrics`
+(others get `403`). The `EXTRONSIS_ALLOWED_CLIENTS` env var (comma-separated) overrides the file.
+Behind a reverse proxy the exporter only sees the proxy's address, so enforce the ACL at the proxy
+there.
+
+```yaml
+allowed_clients:
+  - 10.1.2.3          # Prometheus server
+  - 10.1.0.0/24
+```
+
+**HTTP Basic auth** — set `auth.username`/`auth.password`, or the `EXTRONSIS_AUTH_USERNAME` /
+`EXTRONSIS_AUTH_PASSWORD` env vars (these override the file; setting only one fails at startup).
+The exporter serves plain HTTP, so run it behind a TLS-terminating proxy.
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: extron
+    metrics_path: /probe
+    basic_auth:
+      username: prometheus
+      password_file: /etc/prometheus/extron.pass
+```
+
+**URL-mode target allowlist** — `allowed_hosts` (regexes, fullmatched against the literal `host`,
+no DNS) and `allowed_ports` (default `[443]`) restrict what `/probe?host=...` may contact; other
+targets get `403` and are never contacted. Devices under `devices:` are not checked.
+
+```yaml
+allowed_hosts:
+  - '^switch\d+\.example\.org$'
+```
+
+The client allowlist is checked first (`403`), then Basic auth (`401`).
 
 ---
 
@@ -292,6 +345,7 @@ pip-audit -r requirements.txt   # known-vulnerable dependencies
 | Trivy | `ci.yml` | HIGH/CRITICAL fixable CVEs in the Docker image (base image + deps) |
 | CodeQL | `codeql.yml` | Static analysis (`security-extended`) |
 | Dependency review | `dependency-review.yml` | Blocks PRs that add high-severity vulnerable dependencies |
+| Smoke test | `ci.yml` | Real process: auth, allowlists, clean SIGTERM (`scripts/smoke-test.sh`) |
 | Dependabot | `dependabot.yml` | Weekly updates for pip, the Docker base image and GitHub Actions |
 
 `ci.yml` also runs weekly, so newly disclosed CVEs surface without a push. The Docker image is
