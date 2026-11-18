@@ -340,7 +340,7 @@ pip-audit -r requirements.txt   # known-vulnerable dependencies
 | Check | Where | What it covers |
 |-------|-------|----------------|
 | Lint | `ci.yml` | `ruff` (incl. bandit `S` rules) |
-| Tests | `ci.yml` | `pytest` on Python 3.10 – 3.13 |
+| Tests | `ci.yml` | `pytest` on Python 3.10 – 3.15 |
 | `pip-audit` | `ci.yml` | Known CVEs in `requirements.txt` |
 | Trivy | `ci.yml` | HIGH/CRITICAL fixable CVEs in the Docker image (base image + deps) |
 | CodeQL | `codeql.yml` | Static analysis (`security-extended`) |
