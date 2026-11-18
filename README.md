@@ -1,5 +1,13 @@
 # extronsis-exporter
 
+[![CI](https://github.com/avxugent/extronsis_exporter/actions/workflows/ci.yml/badge.svg)](https://github.com/avxugent/extronsis_exporter/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/avxugent/extronsis_exporter/actions/workflows/codeql.yml/badge.svg)](https://github.com/avxugent/extronsis_exporter/actions/workflows/codeql.yml)
+[![Docker build](https://github.com/avxugent/extronsis_exporter/actions/workflows/docker.yml/badge.svg)](https://github.com/avxugent/extronsis_exporter/actions/workflows/docker.yml)
+[![Dependabot](https://img.shields.io/badge/dependabot-enabled-025e8c?logo=dependabot)](https://github.com/avxugent/extronsis_exporter/security/dependabot)
+[![Docker Hub](https://img.shields.io/docker/pulls/kristofkeppens/extron-exporter?logo=docker)](https://hub.docker.com/r/kristofkeppens/extron-exporter)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)
+![Code style: ruff](https://img.shields.io/badge/lint-ruff-261230?logo=ruff)
+
 A [Prometheus](https://prometheus.io/) exporter for [Extron](https://www.extron.com/) AV devices — video switches, controllers, touch panels, DSPs, and anything else that exposes a web UI over HTTPS with a firmware/software version shown in a `<div id="version">` element.
 
 Rather than speaking a device-specific control protocol, the exporter fetches the device's own status page over HTTPS and parses the version out of the HTML. This makes it work generically across Extron's product line instead of being limited to devices that support a particular protocol.
@@ -262,3 +270,29 @@ The exporter opens an HTTPS connection to the device, issues a `GET` for
 ## License
 
 MIT
+
+---
+
+## Development
+
+```bash
+pip install -r requirements-dev.txt
+pytest --cov          # tests (no network or devices needed)
+ruff check .          # lint + static security checks (bandit rules)
+pip-audit -r requirements.txt   # known-vulnerable dependencies
+```
+
+### CI and security checks
+
+| Check | Where | What it covers |
+|-------|-------|----------------|
+| Lint | `ci.yml` | `ruff` (incl. bandit `S` rules) |
+| Tests | `ci.yml` | `pytest` on Python 3.10 – 3.13 |
+| `pip-audit` | `ci.yml` | Known CVEs in `requirements.txt` |
+| Trivy | `ci.yml` | HIGH/CRITICAL fixable CVEs in the Docker image (base image + deps) |
+| CodeQL | `codeql.yml` | Static analysis (`security-extended`) |
+| Dependency review | `dependency-review.yml` | Blocks PRs that add high-severity vulnerable dependencies |
+| Dependabot | `dependabot.yml` | Weekly updates for pip, the Docker base image and GitHub Actions |
+
+`ci.yml` also runs weekly, so newly disclosed CVEs surface without a push. The Docker image is
+only published if CI passes.

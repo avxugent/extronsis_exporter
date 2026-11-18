@@ -17,7 +17,6 @@ import time
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from http.client import HTTPException, HTTPSConnection
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -51,16 +50,18 @@ class _VersionExtractor(HTMLParser):
 
     def __init__(self) -> None:
         super().__init__()
-        self._depth: Optional[int] = None
+        self._depth: int | None = None
         self._buf: list[str] = []
-        self.version: Optional[str] = None
+        self.version: str | None = None
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in _VOID_ELEMENTS:
             return
         if self._depth is not None:
             self._depth += 1
             return
+        if self.version is not None:
+            return  # first #version div already captured; ignore any later ones
         if tag == "div" and dict(attrs).get("id") == "version":
             self._depth = 1
 
@@ -77,7 +78,7 @@ class _VersionExtractor(HTMLParser):
             self._buf.append(data)
 
 
-def extract_version(html: str) -> Optional[str]:
+def extract_version(html: str) -> str | None:
     """
     Return the firmware/software version found in *html*, or None.
 
@@ -104,10 +105,10 @@ class ProbeResult:
     """Result of probing a single device's web UI."""
 
     success: bool = False
-    status_code: Optional[int] = None
-    version: Optional[str] = None
+    status_code: int | None = None
+    version: str | None = None
     duration_seconds: float = 0.0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 def probe_device(
