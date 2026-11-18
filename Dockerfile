@@ -16,6 +16,11 @@ LABEL org.opencontainers.image.title="extron-exporter" \
       org.opencontainers.image.description="Prometheus exporter for Extron device web UIs" \
       org.opencontainers.image.source="https://github.com/kristofkeppens/extronsis-exporter"
 
+# Pick up Debian security fixes published after the base image was built.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy installed packages from the builder stage

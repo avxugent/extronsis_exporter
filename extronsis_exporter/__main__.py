@@ -56,11 +56,11 @@ from urllib.parse import parse_qs, urlparse
 import yaml
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
+    REGISTRY,
     CollectorRegistry,
     Counter,
     Histogram,
     generate_latest,
-    REGISTRY,
 )
 
 from .collector import ExtronCollector
@@ -87,7 +87,7 @@ _PROBE_DURATION_SECONDS = Histogram(
 # ---------------------------------------------------------------------------
 
 _DEFAULT_CONFIG: dict[str, Any] = {
-    "listen_host": "0.0.0.0",
+    "listen_host": "0.0.0.0",  # noqa: S104 -- intentional: container exporter
     "listen_port": 9877,
     "log_level": "INFO",
     "devices": [],
@@ -111,7 +111,7 @@ def load_config(path: str) -> dict[str, Any]:
     """
     cfg = dict(_DEFAULT_CONFIG)
 
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
 
     cfg.update(data)

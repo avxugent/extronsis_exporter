@@ -35,11 +35,21 @@ docker build -t extronsis-exporter .
 docker compose up -d
 ```
 
-There is **no test suite, linter, or type-checker configured** in this repo (no `pytest`, no
-`pyproject.toml`, no CI lint step). The only CI job (`.github/workflows/docker.yml`) builds and
-pushes a multiarch Docker image to Docker Hub on push to `main`. Verify changes manually by
-running the exporter and curling its endpoints (see below), or by exercising `extract_version()`
-directly since it's a pure function with no I/O.
+Tests live in `tests/` (pytest; no network or real devices needed — `HTTPSConnection` and
+`probe_device` are stubbed, and `test_http.py` runs the real server on an ephemeral port).
+Lint is `ruff` (config in `pyproject.toml`, includes bandit `S` rules). Dev deps are in
+`requirements-dev.txt`:
+
+```bash
+pip install -r requirements-dev.txt
+pytest --cov
+ruff check .
+```
+
+CI (`.github/workflows/`): `ci.yml` (ruff, pytest on 3.10–3.13, pip-audit, Trivy image scan),
+`codeql.yml`, `dependency-review.yml`; `docker.yml` builds and pushes the multiarch image on push
+to `main` only after `ci.yml` passes. Dependabot (`.github/dependabot.yml`) covers pip, Docker
+and GitHub Actions.
 
 ## Architecture
 
