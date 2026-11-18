@@ -70,7 +70,7 @@ def test_index_renders(server):
 
 
 def test_index_escapes_device_fields(monkeypatch):
-    cfg = {"devices": [{"name": "<script>alert(1)</script>", "host": "a&b", "port": 443,
+    cfg = {**_DEFAULT_CONFIG, "devices": [{"name": "<script>alert(1)</script>", "host": "a&b", "port": 443,
                         "path": '"><img src=x>', "verify_tls": False}]}
     httpd = _serve(cfg)
     try:
